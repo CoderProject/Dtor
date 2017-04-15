@@ -20,30 +20,34 @@
 <#@ import namespace="System.CodeDom.Compiler" #>
 <#@ import namespace="Microsoft.CSharp"#>
 <#@ import namespace="System.Text"#><#
- 
+
 ////////////////////////////////////////////////////////////
 //////////////////////// SETTINGS //////////////////////////
 ////////////////////////////////////////////////////////////
 
-// Set the relative path to the edmx file
-const string ModelPath = @"db.edmx";
+// Set the relative path to the edmx file. Set null for auto search
+ModelPath = null;
 
 // Include navigation properties for dtos.
-const bool IncludeNavigationProperties = true;
+IncludeNavigationProperties = true;
 
 // Add DataMember attribute to simple navigation properties.
-const bool DataMemberNavigationSimpleProperties = false;
+DataMemberNavigationSimpleProperties = false;
 
 // Add DataMember attribute to list navigation properties.
-const bool DataMemberNavigationListProperties = false;
+DataMemberNavigationListProperties = false;
 
 // Include assembler extension methods.
-const bool IncludeAssemblers = true;
+IncludeAssemblers = true;
 
 ////////////////////////////////////////////////////////////
 ////////////////////// END SETTINGS ////////////////////////
 ////////////////// DO NOT MODIFY BELOW /////////////////////
 ////////////////////////////////////////////////////////////
+
+if (ModelPath == null)
+	ModelPath = FindEdmxPath();
+ArgumentNotNull(ModelPath, "ModelPath", "Model file not found. Please specify a path or ensure you have an edmx model file in this project.");
 
 var textTransform = DynamicTextTransformation.Create(this);
 var code = new CodeGenerationTools(this);
@@ -63,8 +67,6 @@ WriteHeader(codeStringGenerator, fileManager);
 foreach (var entity in typeMapper.GetItemsToGenerate<EntityType>(itemCollection))
 {
     fileManager.StartNewFile(entity.Name + "DTO.cs");
-#>
-<#
     BeginNamespace(code);
 #>
 <#=codeStringGenerator.UsingDirectives(inHeader: false, modelNameSpace: IncludeAssemblers ? GetNameSpace(ModelPath) : null)#>
@@ -190,6 +192,12 @@ fileManager.Process();
 #>
 <#+
 
+ public string ModelPath = null; 
+ public bool IncludeNavigationProperties; 
+ public bool DataMemberNavigationSimpleProperties;
+ public bool DataMemberNavigationListProperties; 
+ bool IncludeAssemblers;
+
 public void WriteHeader(CodeStringGenerator codeStringGenerator, EntityFrameworkTemplateFileManager fileManager)
 {
     fileManager.StartHeader();
@@ -229,6 +237,24 @@ public void EndNamespace(CodeGenerationTools code)
 }
 <#+
     }
+}
+
+public string FindEdmxPath()
+{
+
+	var hostServiceProvider = (IServiceProvider)Host;
+	var dte = 
+		(EnvDTE.DTE)hostServiceProvider.GetService(typeof(EnvDTE.DTE));
+	var activeSolutionProjects = (Array)dte.ActiveSolutionProjects;
+	var dteProject = (EnvDTE.Project)activeSolutionProjects.GetValue(0);
+
+	//get project dir
+	var projectDir = dteProject.Properties.Item("FullPath").Value.ToString();
+
+	var files = Directory.GetFiles(projectDir, "*.edmx",SearchOption.AllDirectories);
+	if (files.Length > 0)
+		return files[0];
+	return null;
 }
 
 public const string TemplateId = "CSharp_DbContext_Types_EF6";
@@ -715,10 +741,15 @@ public static void ArgumentNotNull<T>(T arg, string name) where T : class
         throw new ArgumentNullException(name);
     }
 }
+public static void ArgumentNotNull<T>(T arg, string name, string message) where T : class
+{
+    if (arg == null)
+    {
+        throw new ArgumentNullException(name, message);
+    }
+}
 	public string GetNameSpace(string path)
 	{
-		if (!path.Contains("\\"))
-			return null;
 
 		var hostServiceProvider = (IServiceProvider)Host;
 		var dte = 
@@ -733,9 +764,15 @@ public static void ArgumentNotNull<T>(T arg, string name) where T : class
 
 		//get project dir
 		var projectDir = dteProject.Properties.Item("FullPath").Value.ToString();
+		
+		//get model path
+		var modelPath = Path.GetFullPath(Path.Combine(templateDir, path));
 
 		//get model dir
-		var modelDir = Path.GetDirectoryName(Path.GetFullPath(Path.Combine(templateDir, path)));
+		var modelDir = Path.GetDirectoryName(modelPath);
+
+		if (templateDir == modelDir)
+			return null;
 
 		//change template dir to model dir
 		//templateDir = Path.GetDirectoryName(fullPath);
